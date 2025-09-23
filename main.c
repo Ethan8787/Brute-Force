@@ -172,7 +172,7 @@ int main(void) {
         if (strcmp(guess, pw) == 0) {
             double elapsed = now_seconds() - start;
             double rate = (elapsed > 0.0) ? ((double) attempts / elapsed) : 0.0;
-            log_progress(attempts, total_str, rate, /*fraction_valid=*/!overflow, /*fraction=*/1.0, /*final=*/0);
+            log_progress(attempts, total_str, rate, !overflow, 1.0, 0);
 
             printf("\n");
             printf("\n");
