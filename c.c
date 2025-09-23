@@ -217,7 +217,6 @@ int main(void) {
         printf("\n");
         log_info("Invalid character. \nTried: %llu\nTime elapsed: %.2fs\n", attempts, elapsed);
     }
-
     {
         double elapsed_since_start = now_seconds() - start;
         double rate = (elapsed_since_start > 0.0) ? ((double) attempts / elapsed_since_start) : 0.0;
