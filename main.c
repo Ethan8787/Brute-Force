@@ -9,8 +9,8 @@
 const char *charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
  // 回傳秒數 計算速率與時間
-static double now_seconds() {
-    return (double) clock() / (double) CLOCKS_PER_SEC;
+static double now_seconds(void) {
+    return (double) GetTickCount64() / 1000.0;
 }
 
  // Minecraft 格式時間戳
@@ -110,7 +110,7 @@ static void log_progress(const unsigned long long attempts, const char *total_st
     if (final) return;
 
     printf("\r[%s INFO]: \x1b[93mProgress\x1b[97m: [", timestr);
-    for (int i = 0; i < filled; ++i)       printf("\x1b[92m█\x1b[0m");
+    for (int i = 0; i < filled; ++i)       printf("\x1b[96m█\x1b[0m");
     for (int i = filled; i < BAR_LEN; ++i) printf("\x1b[90m█\x1b[0m");
     printf("] ");
     fflush(stdout);
@@ -141,12 +141,12 @@ int main(void) {
     char pw[256];
     // 歡迎畫面
     printf("\n");
-    printf("\x1b[94m███████╗████████╗██╗  ██╗ █████╗ ███╗   ██╗\x1b[0m\n");
-    printf("\x1b[94m██╔════╝╚══██╔══╝██║  ██║██╔══██╗████╗  ██║\x1b[0m\n");
-    printf("\x1b[94m█████╗     ██║   ███████║███████║██╔██╗ ██║\x1b[0m\n");
-    printf("\x1b[94m██╔══╝     ██║   ██╔══██║██╔══██║██║╚██╗██║\x1b[0m\n");
-    printf("\x1b[94m███████╗   ██║   ██║  ██║██║  ██║██║ ╚████║\x1b[0m\n");
-    printf("\x1b[94m╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝\x1b[0m\n");
+    printf("\x1b[91m███████╗████████╗██╗  ██╗ █████╗ ███╗   ██╗\x1b[0m\n");
+    printf("\x1b[91m██╔════╝╚══██╔══╝██║  ██║██╔══██╗████╗  ██║\x1b[0m\n");
+    printf("\x1b[91m█████╗     ██║   ███████║███████║██╔██╗ ██║\x1b[0m\n");
+    printf("\x1b[91m██╔══╝     ██║   ██╔══██║██╔══██║██║╚██╗██║\x1b[0m\n");
+    printf("\x1b[91m███████╗   ██║   ██║  ██║██║  ██║██║ ╚████║\x1b[0m\n");
+    printf("\x1b[91m╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝\x1b[0m\n");
     printf("\n");
     printf("================ \x1b[33mBrute-Force\x1b[0m ================\n");
     printf("\x1b[93mEnter the target password\x1b[97m:\n> "); // 提示使用者輸入密碼
