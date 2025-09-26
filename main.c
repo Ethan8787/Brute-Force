@@ -148,7 +148,7 @@ int main(void) {
     printf("\x1b[91m╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝\x1b[0m\n");
     printf("\n");
     printf("================ \x1b[33mBrute-Force\x1b[0m ================\n");
-    printf("\x1b[93mEnter the target password (A-Z, 0-9, max %d)", MAX_LEN);
+    printf("\x1b[93mEnter the target password \x1b[37m(A-Z, 0-9, %d char)\x1b[97m: \x1b[0m", MAX_LEN);
     for (;;) {
         printf("\x1b[97m\n> ");
         fflush(stdout);
@@ -169,7 +169,6 @@ int main(void) {
             printf("\x1b[91mToo long \x1b[37m(Maximum is %d)", MAX_LEN);
             continue;
         }
-
         break;
     }
 
@@ -184,7 +183,6 @@ int main(void) {
     int *indices = malloc(sizeof(int) * fill); // 配置陣列
     for (int i = 0; i < fill; ++i) indices[i] = 0; // 初始化
     char *guess = malloc(fill + 1); // 存放目前字串
-    int found = 0;
 
     unsigned long long total_needed = 1ULL; // 總需嘗試
     int overflow = 0;
@@ -195,8 +193,9 @@ int main(void) {
         }
         total_needed *= (unsigned long long) base; // 總組合數 = base^fill
     }
-    char total_str[256];
-    snprintf(total_str, sizeof(total_str), "%llu", total_needed);
+    char total_str[64];
+    if (!overflow) snprintf(total_str, sizeof(total_str), "%llu", total_needed);
+    else snprintf(total_str, sizeof(total_str), "Extremely big");
 
     while (1) {
         for (int i = 0; i < fill; ++i) guess[i] = charset[indices[i]];
@@ -228,7 +227,6 @@ int main(void) {
             printf("\x1b[93mAverage rate\x1b[97m: %.0f attempts/s\x1b[0m\n", avg_rate);
             printf("\x1b[93mStart time\x1b[97m: %s\n", start_time_str);
             printf("================ \x1b[33mCrack-successful\x1b[0m ================\n");
-            found = 1;
             break;
         }
 
