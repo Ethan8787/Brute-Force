@@ -4,32 +4,20 @@
 #include <time.h>
 #include <stdarg.h>
 #include <windows.h>
+#include <ctype.h>
 
- // 字元集
+// 字元集
 const char *charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
- // 回傳秒數 計算速率與時間
+// 最大長度
+enum { MAX_LEN = 8 };
+
+// 回傳秒數 計算速率與時間
 static double now_seconds(void) {
     return (double) GetTickCount64() / 1000.0;
 }
 
- // Minecraft 格式時間戳
-static void log_info(const char *fmt, ...) {
-    const time_t t = time(NULL);
-    const struct tm *tmnow = localtime(&t);
-    char timestr[16];
-    strftime(timestr, sizeof(timestr), "%H:%M:%S", tmnow);
-    printf("[%s INFO]: ", timestr);
-
-    va_list ap;
-    va_start(ap, fmt);
-    vprintf(fmt, ap);
-    va_end(ap);
-    printf("\n");
-    fflush(stdout);
-}
-
- // 色碼支援
+// 色碼支援
 static void EnableVTMode(void) {
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut == INVALID_HANDLE_VALUE) return;
@@ -41,79 +29,90 @@ static void EnableVTMode(void) {
 
 // 時間格式化 (1h 2min 3s)
 static void format_duration(double secs, char *buf, size_t bufsz) {
-    long s = (long)(secs + 0.5);
-    const long h = s / 3600; s %= 3600;
-    const long m = s / 60;  s %= 60;
+    long s = (long) (secs + 0.5);
+    const long h = s / 3600;
+    s %= 3600;
+    const long m = s / 60;
+    s %= 60;
 
     if (h > 0) {
-        snprintf(buf, bufsz, "%ldh %ldmin", h, m);
+        snprintf(buf, bufsz, "%ldh %ldmin %lds", h, m, s);
     } else if (m > 0) {
-        if (s == 0) snprintf(buf, bufsz, "%ldmin");
-        else        snprintf(buf, bufsz, "%ldmin %lds", m, s);
+        if (s == 0) snprintf(buf, bufsz, "%ldmin", m);
+        else snprintf(buf, bufsz, "%ldmin %lds", m, s);
     } else {
         snprintf(buf, bufsz, "%lds", s);
     }
 }
 
- // 數字格式化 (1,000,000)
-static void format_commas_unsigned(unsigned long long v, char *buf, size_t bufsz) {
-    char tmp[64];
-    int pos = 0;
-    if (v == 0) {
-        snprintf(buf, bufsz, "0");
-        return;
-    }
-    while (v > 0 && pos + 1 < (int) sizeof(tmp)) {
-        tmp[pos++] = '0' + (v % 10);
-        v /= 10;
-    }
-    char out[96];
-    int outpos = 0;
-    for (int i = 0; i < pos; ++i) {
-        if (i > 0 && (i % 3) == 0) out[outpos++] = ',';
-        out[outpos++] = tmp[i];
-    }
-    for (int i = 0; i < outpos / 2; ++i) {
-        char c = out[i];
-        out[i] = out[outpos - 1 - i];
-        out[outpos - 1 - i] = c;
-    }
-    out[outpos] = '\0';
-    strncpy(buf, out, bufsz - 1);
-    buf[bufsz - 1] = '\0';
+// 僅允許 A–Z / 0–9
+static int is_allowed(int c) {
+    return ((c >= 'A' && c <= 'Z') ||
+            (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9'));
 }
 
- // 進度條
+// 轉大寫後有效
+static int upper_valid(char *s) {
+    size_t n = strlen(s);
+    if (n && s[n - 1] == '\n') { s[--n] = '\0'; }
+
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char ch = (unsigned char) s[i];
+        if (!is_allowed(ch)) return 0;
+        if (ch >= 'a' && ch <= 'z') s[i] = (char) toupper(ch);
+    }
+    return 1;
+}
+
+// 進度條
 static void log_progress(const unsigned long long attempts, const char *total_str,
                          const double rate, const int fraction_valid, double fraction, const int final) {
+    static int printed_once = 0;
+
     const time_t t = time(NULL);
     const struct tm *tmnow = localtime(&t);
     char timestr[16];
     strftime(timestr, sizeof(timestr), "%H:%M:%S", tmnow);
-
-    char tps_s[64];
-    unsigned long long tps_int = (unsigned long long)(rate + 0.5);
-    format_commas_unsigned(tps_int, tps_s, sizeof(tps_s));
 
     const int BAR_LEN = 20;
     int filled = 0;
     if (fraction_valid) {
         if (fraction < 0.0) fraction = 0.0;
         if (fraction > 1.0) fraction = 1.0;
-        filled = (int)(fraction * (double)BAR_LEN + 0.5);
-        if (filled < 0) filled = 0;
-        if (filled > BAR_LEN) filled = BAR_LEN;
+        filled = (int) (fraction * (double) BAR_LEN + 0.5);
     } else {
-        filled = (int)(attempts % (unsigned long long)(BAR_LEN + 1));
+        filled = (int) (attempts % (unsigned long long) (BAR_LEN + 1));
+    }
+    if (filled < 0) filled = 0;
+    if (filled > BAR_LEN) filled = BAR_LEN;
+
+    char pctbuf[32];
+    if (fraction_valid) snprintf(pctbuf, sizeof(pctbuf), "(%.2f%%)", fraction * 100.0);
+    else snprintf(pctbuf, sizeof(pctbuf), "(--%%)");
+
+    unsigned long long rate_raw = (unsigned long long) (rate + 0.5);
+
+    if (printed_once) {
+        printf("\x1b[3A");
+    } else {
+        printed_once = 1;
     }
 
-    if (final) return;
-
-    printf("\r[%s INFO]: \x1b[93mProgress\x1b[97m: [", timestr);
-    for (int i = 0; i < filled; ++i)       printf("\x1b[96m█\x1b[0m");
+    printf("\x1b[2K");
+    printf("\x1b[0m[%s INFO]: \x1b[93mProgress\x1b[97m: \x1b[0m[", timestr);
+    for (int i = 0; i < filled; ++i) printf("\x1b[96m█\x1b[0m");
     for (int i = filled; i < BAR_LEN; ++i) printf("\x1b[90m█\x1b[0m");
-    printf("] ");
-    fflush(stdout);
+    printf("] %s", pctbuf);
+    printf("\n");
+
+    printf("\x1b[2K");
+    printf("\x1b[0m[%s INFO]: \x1b[93mAttempts\x1b[97m: \x1b[0m%llu/%s", timestr, attempts, total_str);
+    printf("\n");
+
+    printf("\x1b[2K");
+    printf("\x1b[0m[%s INFO]: \x1b[93mSpeed\x1b[97m: \x1b[0m%llu/s", timestr, rate_raw);
+    printf("\n");
 }
 
 // 進位遞增器(這是我想到最好的名稱了)
@@ -149,22 +148,33 @@ int main(void) {
     printf("\x1b[91m╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝\x1b[0m\n");
     printf("\n");
     printf("================ \x1b[33mBrute-Force\x1b[0m ================\n");
-    printf("\x1b[93mEnter the target password\x1b[97m:\n> "); // 提示使用者輸入密碼
+    printf("\x1b[93mEnter the target password (A-Z, 0-9, max %d)", MAX_LEN);
+    for (;;) {
+        printf("\x1b[97m\n> ");
+        fflush(stdout);
 
-    fflush(stdout);
+        if (!fgets(pw, sizeof(pw), stdin)) return 1;
 
-    if (!fgets(pw, sizeof(pw), stdin)) // 讀取輸入
-        return 1;
-    const size_t ln = strlen(pw); // 輸入長度
-    if (ln > 0 && pw[ln - 1] == '\n') pw[ln - 1] = '\0'; // 移除換行符號
+        if (!upper_valid(pw)) {
+            printf("\x1b[91mInvalid input");
+            continue;
+        }
+        const int target_len = (int) strlen(pw);
+
+        if (target_len == 0) {
+            printf("\x1b[91mNo password entered");
+            continue;
+        }
+        if (target_len > MAX_LEN) {
+            printf("\x1b[91mToo long \x1b[37m(Maximum is %d)", MAX_LEN);
+            continue;
+        }
+
+        break;
+    }
 
     const int target_len = (int) strlen(pw);
     const int fill = target_len;
-    if (fill <= 0) {
-        printf("No password entered. Press Enter to continue...");
-        getchar();
-        return 0;
-    }
 
     unsigned long long attempts = 0ULL; // 已嘗試
     const double start = now_seconds(); // 記錄時間
@@ -174,7 +184,7 @@ int main(void) {
     int *indices = malloc(sizeof(int) * fill); // 配置陣列
     for (int i = 0; i < fill; ++i) indices[i] = 0; // 初始化
     char *guess = malloc(fill + 1); // 存放目前字串
-    int found = 0; // 是否找到密碼的旗標（0 = 尚未找到）
+    int found = 0;
 
     unsigned long long total_needed = 1ULL; // 總需嘗試
     int overflow = 0;
@@ -185,26 +195,25 @@ int main(void) {
         }
         total_needed *= (unsigned long long) base; // 總組合數 = base^fill
     }
-    char total_str[64];
-    if (!overflow) snprintf(total_str, sizeof(total_str), "%llu", total_needed);
-    else snprintf(total_str, sizeof(total_str), "Extremely large");
+    char total_str[256];
+    snprintf(total_str, sizeof(total_str), "%llu", total_needed);
 
     while (1) {
         for (int i = 0; i < fill; ++i) guess[i] = charset[indices[i]];
         guess[fill] = '\0';
 
-        attempts++; // 嘗試次數+1
+        attempts++;
 
-        if (strcmp(guess, pw) == 0) { // 猜中
+        if (strcmp(guess, pw) == 0) {
+            // 猜中
             double elapsed = now_seconds() - start; // 花費時間
             double rate = (elapsed > 0.0) ? ((double) attempts / elapsed) : 0.0; // 速率
             log_progress(attempts, total_str, rate, !overflow, 1.0, 0); // 設定進度 -> 完成
-            double avg_rate = (elapsed > 0.0) ? ((double)attempts / elapsed) : 0.0;
+            double avg_rate = (elapsed > 0.0) ? ((double) attempts / elapsed) : 0.0;
             char elapsed_str[64];
             format_duration(elapsed, elapsed_str, sizeof(elapsed_str));
 
             // 成功訊息
-            printf("\n");
             printf("\n");
             printf("\x1b[33m███████╗██╗   ██╗ ██████╗ ██████╗███████╗███████╗███████╗\x1b[0m\n");
             printf("\x1b[33m██╔════╝██║   ██║██╔════╝██╔════╝██╔════╝██╔════╝██╔════╝\x1b[0m\n");
@@ -213,7 +222,7 @@ int main(void) {
             printf("\x1b[33m███████║╚██████╔╝╚██████╗╚██████╗███████╗███████║███████║\x1b[0m\n");
             printf("\x1b[33m╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝╚══════╝╚══════╝╚══════╝\x1b[0m\n");
             printf("\n");
-            printf("\x1b[93mPassword found\x1b[97m: \x1b[1;97m%s\x1b[0m\n", guess);
+            printf("\x1b[93mPassword found\x1b[97m: \x1b[1;92m%s\x1b[0m\n", guess);
             printf("\x1b[93mAttempts\x1b[97m: %llu\n", attempts);
             printf("\x1b[93mElapsed\x1b[97m: %s\n", elapsed_str);
             printf("\x1b[93mAverage rate\x1b[97m: %.0f attempts/s\x1b[0m\n", avg_rate);
@@ -225,7 +234,8 @@ int main(void) {
 
         double now = now_seconds();
         double elapsed_since_start = now - start;
-        if (now - last_report >= 1.0) { // > 1s
+        if (now - last_report >= 1.0) {
+            // > 1s
             double rate = (elapsed_since_start > 0.0) ? ((double) attempts / elapsed_since_start) : 0.0; // 計算速率
             int fraction_valid = !overflow;
             double fraction = 0.0;
@@ -237,32 +247,10 @@ int main(void) {
         if (!increment_counter(indices, fill, base)) break;
     }
 
-    if (!found) {
-        // 失敗訊息
-        printf("\n");
-        printf("\n");
-        printf("\x1b[31m███████╗ █████╗ ██╗██╗     ███████╗██████╗ \x1b[0m\n");
-        printf("\x1b[31m██╔════╝██╔══██╗██║██║     ██╔════╝██╔══██╗\x1b[0m\n");
-        printf("\x1b[31m█████╗  ███████║██║██║     █████╗  ██║  ██║\x1b[0m\n");
-        printf("\x1b[31m██╔══╝  ██╔══██║██║██║     ██╔══╝  ██║  ██║\x1b[0m\n");
-        printf("\x1b[31m██║     ██║  ██║██║███████╗███████╗██████╔╝\x1b[0m\n");
-        printf("\x1b[31m╚═╝     ╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═════╝ \x1b[0m\n");
-        printf("\n");
-        log_info("Invalid character.");
-    }
-    {
-        double elapsed_since_start = now_seconds() - start;
-        double rate = (elapsed_since_start > 0.0) ? ((double) attempts / elapsed_since_start) : 0.0; // 速率
-        int fraction_valid = !overflow;
-        double fraction = 0.0;
-        if (fraction_valid) fraction = (double) attempts / (double) total_needed;
-        log_progress(attempts, total_str, rate, fraction_valid, fraction, 1);
-        printf("\n");
-    }
-
     free(indices); // 釋放記憶體
     free(guess); // 釋放記憶體
 
+    printf("\n");
     printf("Press Enter to continue...");
     fflush(stdout);
     getchar();
